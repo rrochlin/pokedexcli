@@ -2,17 +2,15 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
+	"github.com/rrochlin/pokedexcli/internals"
 	"os"
 	"strings"
+	"time"
 )
 
 func main() {
-	// need to add in the help command during runtime to avoid dependancy loop.
-	conf := config{}
+	conf := internals.Config{Cache: internals.NewCache(5 * time.Second)}
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Print("Pokedex > ")
@@ -51,70 +49,38 @@ func getCommands() map[string]cliCommand {
 			description: "Display Previous 20 Locations",
 			callback:    commandMapB,
 		},
+		"explore": {
+			name:        "explore",
+			description: "Check for Pokemon located in an area",
+			callback:    commandExplore,
+		},
 	}
 }
 
 type cliCommand struct {
 	name        string
 	description string
-	callback    func(*config) error
+	callback    func(*internals.Config) error
 }
 
-func commandExit(conf *config) error {
+func commandExit(conf *internals.Config) error {
 	fmt.Println("Closing the Pokedex... Goodbye!")
 	os.Exit(0)
 	return nil
 }
 
-func commandHelp(conf *config) error {
-	fmt.Println("Welcome to the Pokedex!\nUsage:\n")
+func commandHelp(conf *internals.Config) error {
+	fmt.Print("Welcome to the Pokedex!\nUsage:\n\n")
 	for _, cmd := range getCommands() {
 		fmt.Println(fmt.Sprintf("%v: %v", cmd.name, cmd.description))
 	}
 	return nil
 }
 
-type config struct {
-	Next     *string
-	Previous *string
-}
-
-type LocationArea struct {
-	Count    int     `json:"count"`
-	Next     *string `json:"next"`
-	Previous *string `json:"previous"`
-	Results  []struct {
-		Name string `json:"name"`
-		URL  string `json:"url"`
-	} `json:"results"`
-}
-
-func commandMap(conf *config) error {
-	var url string
-	if conf.Next == nil {
-		url = "https://pokeapi.co/api/v2/location-area/"
-	} else {
-		url = *conf.Next
-	}
-
-	res, err := http.Get(url)
+func commandMap(conf *internals.Config) error {
+	locationSearch, err := internals.GetPokeLocations(conf)
 	if err != nil {
-		return fmt.Errorf("could not get location data: %v", err)
-	}
-
-	defer res.Body.Close()
-	if res.StatusCode > 299 {
-		return fmt.Errorf("Server did not respond with OK, StatusCode:%v", res.StatusCode)
-	}
-
-	var locationSearch LocationArea
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return fmt.Errorf("Could not read response with io: %v", err)
-	}
-
-	if err = json.Unmarshal(body, &locationSearch); err != nil {
-		return fmt.Errorf("Unmarshalling response failed: %v", err)
+		return err
 	}
 
 	conf.Next = locationSearch.Next
@@ -125,7 +91,7 @@ func commandMap(conf *config) error {
 	return nil
 }
 
-func commandMapB(conf *config) error {
+func commandMapB(conf *internals.Config) error {
 	if conf.Previous == nil {
 		return fmt.Errorf("No previous locations to show")
 	}
@@ -135,6 +101,10 @@ func commandMapB(conf *config) error {
 	if err := commandMap(conf); err != nil {
 		return err
 	}
+	return nil
+}
+
+func commandExplore(conf *internals.Config) error {
 	return nil
 }
 
