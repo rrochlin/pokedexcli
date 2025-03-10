@@ -68,6 +68,16 @@ func getCommands() map[string]cliCommand {
 			description: "Attempt to catch a pokemon",
 			callback:    commandCatch,
 		},
+		"inspect": {
+			name:        "inspect",
+			description: "Inspect a pokemon from the pokedex",
+			callback:    commandInspect,
+		},
+		"pokedex": {
+			name:        "pokedex",
+			description: "List out all captured pokemon",
+			callback:    commandPokedex,
+		},
 	}
 }
 
@@ -153,6 +163,35 @@ func commandCatch(conf *internals.Config, args ...string) error {
 		fmt.Printf("%v was caught!\n", pokemon.Name)
 	} else {
 		fmt.Printf("%v escaped!\n", pokemon.Name)
+	}
+	return nil
+}
+
+func commandInspect(conf *internals.Config, args ...string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("Not enough args supplied for inspect")
+	}
+	if mon, ok := conf.Pokedex[args[0]]; !ok {
+		fmt.Println("Pokemon has not been caught")
+	} else {
+		fmt.Printf("Name: %v\n", mon.Name)
+		fmt.Printf("Height: %v\n", mon.Height)
+		fmt.Printf("Weight: %v\n", mon.Weight)
+		fmt.Printf("Stats: \n")
+		for _, stat := range mon.Stats {
+			fmt.Printf(" -%v: %v\n", stat.Stat.Name, stat.BaseStat)
+		}
+		for _, tp := range mon.Types {
+			fmt.Printf(" - %v\n", tp.Type.Name)
+		}
+	}
+	return nil
+}
+
+func commandPokedex(conf *internals.Config, _ ...string) error {
+	fmt.Println("Your Pokedex:")
+	for name := range conf.Pokedex {
+		fmt.Printf(" - %v\n", name)
 	}
 	return nil
 }
