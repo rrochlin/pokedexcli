@@ -4,20 +4,29 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/rrochlin/pokedexcli/internals"
+	"math/rand"
 	"os"
 	"strings"
 	"time"
 )
 
 func main() {
-	conf := internals.Config{Cache: internals.NewCache(5 * time.Second)}
+	conf := internals.Config{
+		Cache:   internals.NewCache(5 * time.Second),
+		Pokedex: make(map[string]internals.Pokemon),
+	}
+
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Print("Pokedex > ")
 		scanner.Scan()
-		command := cleanInput(scanner.Text())[0]
-		if cmd, ok := getCommands()[command]; ok {
-			if err := cmd.callback(&conf); err != nil {
+		command := cleanInput(scanner.Text())
+		if len(command) < 1 {
+			fmt.Println("Invalid Command")
+			continue
+		}
+		if cmd, ok := getCommands()[command[0]]; ok {
+			if err := cmd.callback(&conf, command[1:]...); err != nil {
 				fmt.Println(err)
 			}
 		} else {
@@ -54,22 +63,27 @@ func getCommands() map[string]cliCommand {
 			description: "Check for Pokemon located in an area",
 			callback:    commandExplore,
 		},
+		"catch": {
+			name:        "catch",
+			description: "Attempt to catch a pokemon",
+			callback:    commandCatch,
+		},
 	}
 }
 
 type cliCommand struct {
 	name        string
 	description string
-	callback    func(*internals.Config) error
+	callback    func(*internals.Config, ...string) error
 }
 
-func commandExit(conf *internals.Config) error {
+func commandExit(conf *internals.Config, _ ...string) error {
 	fmt.Println("Closing the Pokedex... Goodbye!")
 	os.Exit(0)
 	return nil
 }
 
-func commandHelp(conf *internals.Config) error {
+func commandHelp(conf *internals.Config, _ ...string) error {
 	fmt.Print("Welcome to the Pokedex!\nUsage:\n\n")
 	for _, cmd := range getCommands() {
 		fmt.Println(fmt.Sprintf("%v: %v", cmd.name, cmd.description))
@@ -77,7 +91,7 @@ func commandHelp(conf *internals.Config) error {
 	return nil
 }
 
-func commandMap(conf *internals.Config) error {
+func commandMap(conf *internals.Config, _ ...string) error {
 	locationSearch, err := internals.GetPokeLocations(conf)
 	if err != nil {
 		return err
@@ -91,20 +105,55 @@ func commandMap(conf *internals.Config) error {
 	return nil
 }
 
-func commandMapB(conf *internals.Config) error {
+func commandMapB(conf *internals.Config, _ ...string) error {
 	if conf.Previous == nil {
 		return fmt.Errorf("No previous locations to show")
 	}
 	t := conf.Next
 	conf.Next = conf.Previous
 	conf.Previous = t
-	if err := commandMap(conf); err != nil {
+	if err := commandMap(conf, ""); err != nil {
 		return err
 	}
 	return nil
 }
 
-func commandExplore(conf *internals.Config) error {
+func commandExplore(conf *internals.Config, args ...string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("Not enough args supplied for explore")
+	}
+	area := args[0]
+	better_name := strings.ReplaceAll(area, "-", " ")
+	fmt.Printf("Exploring %v...\n", better_name)
+	pokeArea, err := internals.GetPokeArea(conf, area)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Found Pokemon:")
+	for _, encounter := range pokeArea.PokemonEncounters {
+		fmt.Printf(" - %v\n", encounter.Pokemon.Name)
+	}
+	return nil
+}
+
+func commandCatch(conf *internals.Config, args ...string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("Not enough args supplied for catch")
+	}
+	pokemonSearch := args[0]
+	pokemon, err := internals.GetPokemon(conf, pokemonSearch)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Throwing a Pokeball at %v...\n", pokemon.Name)
+	thresh := 0.25 + float64(3.0*pokemon.BaseExperience)/float64(2000.0+5.0*pokemon.BaseExperience)
+	fmt.Println(thresh)
+	if rand.Float64() > thresh {
+		conf.Pokedex[pokemon.Name] = pokemon
+		fmt.Printf("%v was caught!\n", pokemon.Name)
+	} else {
+		fmt.Printf("%v escaped!\n", pokemon.Name)
+	}
 	return nil
 }
 
